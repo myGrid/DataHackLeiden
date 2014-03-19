@@ -4,16 +4,32 @@ import requests
 import json
 import time
 import sys
-from IPython.display import HTML
+import urllib2
+
+from IPython.display import HTML, display_html
 
 class TavernaPlayerClient(object):
     
     def __init__(self, url):
+        if url is None:
+            raise Exception('url must be specified')
+        TavernaPlayerClient.check_url(url)
         self.__url = url
         self.__auth = None
     
     def __init__(self, url, username, password) :
+        if None in [url, username, password]:
+            raise Exception('url, username and password must be specified')
+        
+        TavernaPlayerClient.check_url(url)
         self.__url = url
+
+        if not isinstance(username, basestring):
+            raise Exception('username must be a string')
+        
+        if not isinstance(password, basestring):
+            raise Exception('password must be a string')
+        
         self.__auth = (username, password)
         
     def getWorkflowDescription(self, workflowId):
@@ -26,10 +42,10 @@ class TavernaPlayerClient(object):
         expectedInputs = workflow_description.get('inputs_attributes', {})
         for expectedInput in expectedInputs:
             expectedInputName = expectedInput['name']
-            if inputDict.hasKey(expectedInputName):
+            if inputDict.has_key(expectedInputName):
                 expectedInput['value'] = inputDict[expectedInputName]
             else:
-                if not expectedInput.hasKey('value'):
+                if not expectedInput.has_key('value'):
                     raise Exception('No value specified for ' + expectedInputName)
         # All values should now be filled in
         new_run = {'run' : workflow_description}
@@ -42,7 +58,8 @@ class TavernaPlayerClient(object):
         try:
             run_info = new_run_result.json()
             run_id = run_info['id']
-            return run_id
+            self.showWorkflowRun(run_id)
+            return self.getResultsOfRun(run_id)
             
         except KeyError:
             raise Exception('Unable to local new run')
@@ -50,7 +67,8 @@ class TavernaPlayerClient(object):
     def showWorkflowRun(self, run_id):
         run_location = self.__url + '/runs/' + str(run_id) + '?embedded=true'
         iframe_code = '<iframe src="' + run_location + '" width=1200px height=900px></iframe>'
-        return HTML(iframe_code)
+        h = HTML(iframe_code)
+        display_html(h)
 
     def getResultsOfRun(self, run_id):
         while True:
@@ -77,6 +95,15 @@ class TavernaPlayerClient(object):
             print output_get
             output_dict[output_name] = output_get.text
         return output_dict
+
+    @staticmethod
+    def check_url(url):
+        try:
+            f = urllib2.urlopen(urllib2.Request(url))
+            deadLinkFound = False
+        except:
+            raise Exception('Unable to contact ' + url)
+
     
 def json_mime():
     return 'application/json'
