@@ -1,1 +1,2 @@
 from TavernaPlayerClient import TavernaPlayerClient
+from Workflow import Workflow

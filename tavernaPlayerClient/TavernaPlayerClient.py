@@ -10,13 +10,6 @@ from IPython.display import HTML, display_html
 
 class TavernaPlayerClient(object):
     
-    def __init__(self, url):
-        if url is None:
-            raise Exception('url must be specified')
-        TavernaPlayerClient.check_url(url)
-        self.__url = url
-        self.__auth = None
-    
     def __init__(self, url, username, password) :
         if None in [url, username, password]:
             raise Exception('url, username and password must be specified')
@@ -31,14 +24,67 @@ class TavernaPlayerClient(object):
             raise Exception('password must be a string')
         
         self.__auth = (username, password)
+    
+    def getWorkflows(self):
+        location = self.__url + '/workflows'
+        workflow_descriptions_response = requests.get(location, headers=headers(), auth=self.__auth)
+        if workflow_descriptions_response.status_code >= 400:
+            raise Exception('Unable to retrieve workflow descriptions')
+        workflow_descriptions = workflow_descriptions_response.json()
+        result = []
+        for wd in workflow_descriptions:
+            result.append(Workflow(self, wd['id'], wd['category'], wd['description'], wd['title']))
+        return sorted(result, key=lambda w: w.identifier)
         
-    def getWorkflowDescription(self, workflowId):
+    def getRunTemplate(self, workflowId):
+        if workflowId is None:
+            raise Exception('workflowId must be specified')
+        
+        if not isinstance(workflowId, int):
+            raise Exception('workflowId must be an integer')
         location = self.__url + '/runs/new?workflow_id=' + str(workflowId)
-        workflow_description = requests.get(location, headers=headers(), auth=self.__auth)
-        return workflow_description.json()['run']
+        workflow_description_response = requests.get(location, headers=headers(), auth=self.__auth)
+        if workflow_description_response.status_code >= 400:
+            raise Exception('Unable to retrieve workflow description for ' + str(workflowId) + ' : ' + str(workflow_description_response.status_code))
+        
+        try:
+            workflow_description = workflow_description_response.json()
+        except:
+                raise Exception('Unable to read json of workflow description')
+        
+        try:
+            run = workflow_description['run']
+        except KeyError:
+            raise Exception('Unable to extract information from workflow description')
+        
+        return run
+    
+    
+    def runWorkflow(self, workflowId, inputDict):
+        if workflowId is None:
+            raise Exception('workflowId must be specified')
+        
+        if not isinstance(workflowId, int):
+            raise Exception('workflowId must be an integer')
+        
+        if inputDict is None:
+            inputDict = {}
+        run_id = self.startWorkflowRun(workflowId, inputDict)
+        self.showWorkflowRun(run_id)
+        results = self.getResultsOfRun(run_id)
+        return results
     
     def startWorkflowRun(self, workflowId, inputDict):
-        workflow_description = self.getWorkflowDescription(workflowId)
+        if workflowId is None:
+            raise Exception('workflowId must be specified')
+        
+        if not isinstance(workflowId, int):
+            raise Exception('workflowId must be an integer')
+        
+        if inputDict is None:
+            inputDict = {}
+            
+        workflow_description = self.getRunTemplate(workflowId)
         expectedInputs = workflow_description.get('inputs_attributes', {})
         for expectedInput in expectedInputs:
             expectedInputName = expectedInput['name']
@@ -58,8 +104,7 @@ class TavernaPlayerClient(object):
         try:
             run_info = new_run_result.json()
             run_id = run_info['id']
-            self.showWorkflowRun(run_id)
-            return self.getResultsOfRun(run_id)
+            return run_id
             
         except KeyError:
             raise Exception('Unable to local new run')
@@ -91,8 +136,6 @@ class TavernaPlayerClient(object):
             output_mime = o['value_type']
             output_location = self.__url + output_path
             output_get = requests.get(output_location, headers={'accept':output_mime}, auth=self.__auth)
-            print output_get.text
-            print output_get
             output_dict[output_name] = output_get.text
         return output_dict
 
