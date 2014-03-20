@@ -7,6 +7,7 @@ import sys
 import urllib2
 
 from IPython.display import HTML, display_html
+from copy import deepcopy
 
 class TavernaPlayerClient(object):
     
@@ -50,17 +51,19 @@ class TavernaPlayerClient(object):
         try:
             workflow_description = workflow_description_response.json()
         except:
-                raise Exception('Unable to read json of workflow description')
+            print str(workflowId)
+            print str(workflow_description_response.status_code)
+            raise Exception('Unable to read json of workflow description')
         
         try:
             run = workflow_description['run']
         except KeyError:
             raise Exception('Unable to extract information from workflow description')
         
-        return run
+        return RunTemplate(run)
     
     
-    def runWorkflow(self, workflowId, inputDict):
+    def runWorkflow(self, workflowId, runName, inputDict):
         if workflowId is None:
             raise Exception('workflowId must be specified')
         
@@ -69,12 +72,12 @@ class TavernaPlayerClient(object):
         
         if inputDict is None:
             inputDict = {}
-        run_id = self.startWorkflowRun(workflowId, inputDict)
-        self.showWorkflowRun(run_id)
-        results = self.getResultsOfRun(run_id)
+        new_run = self.startWorkflowRun(workflowId, runName, inputDict)
+        self.showWorkflowRun(new_run.identifier)
+        results = self.getResultsOfRun(new_run.identifier)
         return results
     
-    def startWorkflowRun(self, workflowId, inputDict):
+    def startWorkflowRun(self, workflowId, runName, inputDict):
         if workflowId is None:
             raise Exception('workflowId must be specified')
         
@@ -84,27 +87,33 @@ class TavernaPlayerClient(object):
         if inputDict is None:
             inputDict = {}
             
-        workflow_description = self.getRunTemplate(workflowId)
-        expectedInputs = workflow_description.get('inputs_attributes', {})
-        for expectedInput in expectedInputs:
-            expectedInputName = expectedInput['name']
-            if inputDict.has_key(expectedInputName):
-                expectedInput['value'] = inputDict[expectedInputName]
-            else:
-                if not expectedInput.has_key('value'):
-                    raise Exception('No value specified for ' + expectedInputName)
+        workflow_description = deepcopy(self.getRunTemplate(workflowId))
+        expectedInputs = workflow_description.inputs
+        input_list = []
+        for inputName in expectedInputs:
+            value = expectedInputs[inputName]
+            if inputName in inputDict:
+                value = inputDict[inputName]
+            if value is None:
+                raise Exception('No value specified for ' + inputName)
+            input_list.append({'name':inputName, 'value': value})
+                
+        contents = {}
+        contents['workflow_id'] = workflowId
+        contents['name'] = runName
+        contents['inputs_attributes'] = input_list
         # All values should now be filled in
-        new_run = {'run' : workflow_description}
+        new_run_request_data = json.dumps({'run' : contents})
         location = self.__url + '/runs'
-        new_run_result = requests.post(location, headers=headers(), auth=self.__auth, data=json.dumps(new_run))
+        new_run_result = requests.post(location, headers=headers(), auth=self.__auth, data=new_run_request_data)
         if new_run_result.status_code >= 400:
-            raise Exception('Unable to create run')
+            raise Exception('Unable to create run ' + str(new_run_result.status_code))
         if new_run_result.headers is None:
             raise Exception('Unable to locate new run')
         try:
             run_info = new_run_result.json()
-            run_id = run_info['id']
-            return run_id
+            new_run = Run(run_info)
+            return new_run
             
         except KeyError:
             raise Exception('Unable to local new run')
