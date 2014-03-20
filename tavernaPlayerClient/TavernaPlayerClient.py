@@ -25,7 +25,7 @@ class TavernaPlayerClient(object):
         
         self.__auth = (username, password)
     
-    def getWorkflowDescriptions(self):
+    def getWorkflows(self):
         location = self.__url + '/workflows'
         workflow_descriptions_response = requests.get(location, headers=headers(), auth=self.__auth)
         if workflow_descriptions_response.status_code >= 400:
@@ -33,10 +33,10 @@ class TavernaPlayerClient(object):
         workflow_descriptions = workflow_descriptions_response.json()
         result = []
         for wd in workflow_descriptions:
-            result.append(Workflow(wd['id'], wd['category'], wd['description'], wd['title']))
-        return result
+            result.append(Workflow(self, wd['id'], wd['category'], wd['description'], wd['title']))
+        return sorted(result, key=lambda w: w.identifier)
         
-    def getWorkflowDescription(self, workflowId):
+    def getRunTemplate(self, workflowId):
         if workflowId is None:
             raise Exception('workflowId must be specified')
         
@@ -84,7 +84,7 @@ class TavernaPlayerClient(object):
         if inputDict is None:
             inputDict = {}
             
-        workflow_description = self.getWorkflowDescription(workflowId)
+        workflow_description = self.getRunTemplate(workflowId)
         expectedInputs = workflow_description.get('inputs_attributes', {})
         for expectedInput in expectedInputs:
             expectedInputName = expectedInput['name']
@@ -136,8 +136,6 @@ class TavernaPlayerClient(object):
             output_mime = o['value_type']
             output_location = self.__url + output_path
             output_get = requests.get(output_location, headers={'accept':output_mime}, auth=self.__auth)
-            print output_get.text
-            print output_get
             output_dict[output_name] = output_get.text
         return output_dict
 
