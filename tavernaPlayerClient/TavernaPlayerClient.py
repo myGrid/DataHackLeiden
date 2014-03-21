@@ -146,7 +146,7 @@ class TavernaPlayerClient(object):
         outputzip_location = finished_info['outputs_zip']
         zip_location = self.__url + outputzip_location
         zip_response = requests.get(zip_location, headers = {'accept':'application/octet-stream'}, auth=self.__auth)
-        output_dict = convert_zip(zip_response.content)
+        output_dict = convertZip(zip_response.content)
 
         return output_dict
 
