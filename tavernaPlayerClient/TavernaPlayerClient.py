@@ -8,6 +8,8 @@ import urllib2
 
 from IPython.display import HTML, display_html
 from copy import deepcopy
+from zipfile import ZipFile
+import StringIO
 
 class TavernaPlayerClient(object):
     
@@ -73,8 +75,8 @@ class TavernaPlayerClient(object):
         if inputDict is None:
             inputDict = {}
         new_run = self.startWorkflowRun(workflowId, runName, inputDict)
-        self.showWorkflowRun(new_run.identifier)
-        results = self.getResultsOfRun(new_run.identifier)
+        self.showWorkflowRun(new_run)
+        results = self.getResultsOfRun(new_run)
         return results
     
     def startWorkflowRun(self, workflowId, runName, inputDict):
@@ -101,14 +103,17 @@ class TavernaPlayerClient(object):
         contents = {}
         contents['workflow_id'] = workflowId
         contents['name'] = runName
-        contents['inputs_attributes'] = input_list
+        if input_list:
+            contents['inputs_attributes'] = input_list
         # All values should now be filled in
         new_run_request_data = json.dumps({'run' : contents})
         location = self.__url + '/runs'
         new_run_result = requests.post(location, headers=headers(), auth=self.__auth, data=new_run_request_data)
         if new_run_result.status_code >= 400:
+            print new_run_request_data
             raise Exception('Unable to create run ' + str(new_run_result.status_code))
         if new_run_result.headers is None:
+            print new_run_request_data
             raise Exception('Unable to locate new run')
         try:
             run_info = new_run_result.json()
@@ -118,13 +123,14 @@ class TavernaPlayerClient(object):
         except KeyError:
             raise Exception('Unable to local new run')
         
-    def showWorkflowRun(self, run_id):
-        run_location = self.__url + '/runs/' + str(run_id) + '?embedded=true'
+    def showWorkflowRun(self, run):
+        run_location = self.__url + '/runs/' + str(run.identifier) + '?embedded=true'
         iframe_code = '<iframe src="' + run_location + '" width=1200px height=900px></iframe>'
         h = HTML(iframe_code)
         display_html(h)
 
-    def getResultsOfRun(self, run_id):
+    def getResultsOfRun(self, run):
+        run_id = run.identifier
         while True:
             latest_run_info = requests.get(self.__url + '/runs/' + str(run_id), headers=headers(), auth=self.__auth)
             if latest_run_info.status_code >= 400:
@@ -136,16 +142,12 @@ class TavernaPlayerClient(object):
                 raise Exception('run was cancelled')
             time.sleep(5)
 
-        output_dict = {}
         finished_info = latest_run_info.json()
-        outputs = finished_info['outputs']
-        for o in outputs:
-            output_name = o['name']
-            output_path = o['path']
-            output_mime = o['value_type']
-            output_location = self.__url + output_path
-            output_get = requests.get(output_location, headers={'accept':output_mime}, auth=self.__auth)
-            output_dict[output_name] = output_get.text
+        outputzip_location = finished_info['outputs_zip']
+        zip_location = self.__url + outputzip_location
+        zip_response = requests.get(zip_location, headers = {'accept':'application/octet-stream'}, auth=self.__auth)
+        output_dict = convert_zip(zip_response.content)
+
         return output_dict
 
     @staticmethod
@@ -163,5 +165,52 @@ def json_mime():
 def headers():
     return {'content-type':json_mime(), 'accept':json_mime()}
 
+def convertZip(stringZip):
+    result = {}
+    zipFile = ZipFile(StringIO.StringIO(stringZip))
+    zipFileContentsList = zipFile.infolist()
+    for member in zipFileContentsList:
+        parts = member.filename.split('/')
+        currentDict = result
+        for p in parts:
+            nameParts = p.split('.')
+            prefix = nameParts[0]
+            if prefix in currentDict:
+                currentDict = currentDict[prefix]
+            else:
+                if len(nameParts) > 1:
+                    ## There is a suffix and so it a leaf
+                    currentDict[prefix] = zipFile.read(member)
+                else:
+                    currentDict[prefix] = {}
+                    currentDict = currentDict[prefix]
+    
+    for portName in result:
+        value = result[portName]
+        if isinstance(value, dict):
+            result[portName] = convertDictToList(value)
+    return result
 
+def convertDictToList(d):
+    size = 0
+    for i in d:
+        try:
+            int_i = int(i)
+            size = max(size, int_i)
+        except:
+            pass
+    result = [None] * size
+    
+    for i in d:
+        try:
+            int_i = int(i) - 1
+            v = d[i]
+            if isinstance(v, dict):
+                result[int_i] = convertDictToList(v)
+            else:
+                result[int_i] = v
+        except:
+            pass
+    return result
 
+    
