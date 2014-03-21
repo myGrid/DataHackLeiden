@@ -1,16 +1,40 @@
 # TavernaPlayerClient.py
+#  Taverna Player Client for running Taverna Workflows from IPython Notebook.
+#-----------------------------------------------------------------------------
+#  Copyright (c) 2014, Alan R. Wiliams myGrid Team, <support@mygrid.org.uk>
 
 import requests
 import json
 import time
 import sys
 import urllib2
+import Workflow
 
 from IPython.display import HTML, display_html
 
 class TavernaPlayerClient(object):
+    """
+    Main class for the Taverna Player Client 
+    """
     
     def __init__(self, url, username, password) :
+        """
+        Parameters
+        ----------
+        url : URL, Taverna Player Portal URL
+        username: string, username for the Taverna Player portal
+        password: string, password for the Taverna Player portal  
+    
+        Returns
+        -------
+        TavernaPlayerClient object
+        
+        Raises
+        ------
+        Exception('url, username and password must be specified')
+        Exception('username must be a string')
+        Exception('password must be a string')
+        """
         if None in [url, username, password]:
             raise Exception('url, username and password must be specified')
         
@@ -26,6 +50,12 @@ class TavernaPlayerClient(object):
         self.__auth = (username, password)
     
     def getWorkflows(self):
+        """Returns a list of workflows available on Taverna Player sorted by their identifier 
+        
+        Raises
+        ------   
+        Exception('Unable to retrieve workflow descriptions')
+        """       
         location = self.__url + '/workflows'
         workflow_descriptions_response = requests.get(location, headers=headers(), auth=self.__auth)
         if workflow_descriptions_response.status_code >= 400:
@@ -37,6 +67,21 @@ class TavernaPlayerClient(object):
         return sorted(result, key=lambda w: w.identifier)
         
     def getRunTemplate(self, workflowId):
+        """
+        Parameters
+        ----------
+        workflowId: integer, Workflow ID of the workflows available on the Taverna Player Portal
+        
+        Returns
+        -------
+        Returns a RunTemplate object
+        
+        Raises
+        ------
+        Exception('workflowId must be specified')
+        Exception('workflowId must be an integer')
+        Exception('Unable to read json of workflow description')
+        """
         if workflowId is None:
             raise Exception('workflowId must be specified')
         
@@ -61,6 +106,21 @@ class TavernaPlayerClient(object):
     
     
     def runWorkflow(self, workflowId, inputDict):
+        """Runs the specified workflow
+        Parameters
+        ----------
+        workflowId: integer, Workflow ID of the workflows available on the Taverna Player Portal
+        inputDict: dictionary object, input values provided by the user
+        
+        Returns
+        -------
+        Results of the run
+        
+        Raises
+        ------
+        Exception('workflowId must be specified')
+        Exception('workflowId must be an integer')
+        """
         if workflowId is None:
             raise Exception('workflowId must be specified')
         
@@ -75,6 +135,25 @@ class TavernaPlayerClient(object):
         return results
     
     def startWorkflowRun(self, workflowId, inputDict):
+        """Starts a new instance of a Workflow Run 
+        
+        Parameters
+        ----------
+        workflowId: integer, Workflow ID of the workflows available on the Taverna Player Portal
+        inputDict: dictionary object, input values provided by the user
+        
+        Returns
+        -------
+        Workflow ID
+        
+        Raises
+        ------
+        Exception('workflowId must be specified')
+        Exception('workflowId must be an integer')
+        Exception('No value specified for ' + expectedInputName)
+        Exception('Unable to create run')
+        Exception('Unable to locate new run')
+        """
         if workflowId is None:
             raise Exception('workflowId must be specified')
         
@@ -88,12 +167,13 @@ class TavernaPlayerClient(object):
         expectedInputs = workflow_description.get('inputs_attributes', {})
         for expectedInput in expectedInputs:
             expectedInputName = expectedInput['name']
+            # If the user did not specify the input values, the default ones will be used
             if inputDict.has_key(expectedInputName):
                 expectedInput['value'] = inputDict[expectedInputName]
             else:
                 if not expectedInput.has_key('value'):
                     raise Exception('No value specified for ' + expectedInputName)
-        # All values should now be filled in
+        # All values should now be filled in 
         new_run = {'run' : workflow_description}
         location = self.__url + '/runs'
         new_run_result = requests.post(location, headers=headers(), auth=self.__auth, data=json.dumps(new_run))
@@ -107,15 +187,36 @@ class TavernaPlayerClient(object):
             return run_id
             
         except KeyError:
-            raise Exception('Unable to local new run')
+            raise Exception('Unable to locate new run')
         
     def showWorkflowRun(self, run_id):
+        """Displays workflow run in the IPython Notebook cell
+        
+        Parameters
+        ----------
+        run_id: integer, Workflow Run Id retrieved in WorkflowRun()
+        """
         run_location = self.__url + '/runs/' + str(run_id) + '?embedded=true'
         iframe_code = '<iframe src="' + run_location + '" width=1200px height=900px></iframe>'
         h = HTML(iframe_code)
         display_html(h)
 
     def getResultsOfRun(self, run_id):
+        """Waits for the workflow to finish running
+        
+        Parameters
+        ----------
+        run_id: integer, Workflow Run Id retrieved in WorkflowRun()
+        
+        Returns
+        -------
+        Dictionary with the run results
+        
+        Raises
+        ------
+        Exception('Error reading run information')
+        Exception('Run was cancelled')
+        """
         while True:
             latest_run_info = requests.get(self.__url + '/runs/' + str(run_id), headers=headers(), auth=self.__auth)
             if latest_run_info.status_code >= 400:
@@ -124,7 +225,7 @@ class TavernaPlayerClient(object):
             if latest_run['state'] == 'finished':
                 break
             elif latest_run['state'] == 'cancelled':
-                raise Exception('run was cancelled')
+                raise Exception('Run was cancelled')
             time.sleep(5)
 
         output_dict = {}
