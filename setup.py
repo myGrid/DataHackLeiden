@@ -1,22 +1,22 @@
 #  Taverna Player Client for running Taverna Workflows from IPython Notebook.
 #-----------------------------------------------------------------------------
-#  Copyright (c) 2014, Alan R. Wiliams myGrid Team, <support@mygrid.org.uk>
+#  Copyright (c) 2014, University of Manchester <support@mygrid.org.uk>
+#
+# 
 
 #!/usr/bin/env python
 
 
 from distutils.core import setup
 
-setup(name='Taverna Player Client',
-      version='0.01',
-      Description='Taverna Player Client for running Taverna Workflows from IPython Notebook',
-      author='Alan R. Williams',
+setup(name='tavernaPlayerClient',
+      version='0.03',
+      description='Taverna Player Client for running Taverna Workflows from IPython Notebook',
+      author='Alan R. Williams, Youri Lammers, Ross Mounce, Aleksandra Pawlik',
       author_email='support@mygrid.org.uk',
-      url='http://www.mygrid.org.uk',
-      license = 'MIT',
-#      platform = '',      
+      url='http://www.mygrid.org.uk',   
       packages=['tavernaPlayerClient'],
-      py_modules=['tavernaPlayerClient.TavernaPlayerClient', 'tavernaPlayerClient.Workflow'],
+      package_dir={'tavernaPlayerClient': 'tavernaPlayerClient'},
       classifiers=[
         "Development Status :: 3 - Alpha",
         "Topic :: Utilities",
