@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 #  Taverna Player Client for running Taverna Workflows from IPython Notebook.
 #-----------------------------------------------------------------------------
 #  Copyright (c) 2014, University of Manchester, myGrid Team, <support@mygrid.org.uk>
@@ -12,3 +13,5 @@
 def setup(): 
     from TavernaPlayerClient import TavernaPlayerClient
     from Workflow import Workflow
+    from RunTemplate import RunTemplate
+
