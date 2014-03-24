@@ -10,13 +10,12 @@
 from distutils.core import setup
 
 setup(name='tavernaPlayerClient',
-      version='0.03',
+      version='0.04',
       description='Taverna Player Client for running Taverna Workflows from IPython Notebook',
       author='Alan R. Williams, Youri Lammers, Ross Mounce, Aleksandra Pawlik',
       author_email='support@mygrid.org.uk',
       url='http://www.mygrid.org.uk',   
-      packages=['tavernaPlayerClient'],
-      package_dir={'tavernaPlayerClient': 'tavernaPlayerClient'},
+      packages=['tavernaplayerclient'],
       classifiers=[
         "Development Status :: 3 - Alpha",
         "Topic :: Utilities",
