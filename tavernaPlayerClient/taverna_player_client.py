@@ -28,6 +28,7 @@ class Client(object):
     
     JSON_MIME = 'application/json'
     HEADERS = {'content-type':JSON_MIME, 'accept':JSON_MIME}
+
     
     def __init__(self, url, username, password) :
         """
@@ -61,6 +62,8 @@ class Client(object):
             raise Exception('password must be a string')
         
         self.__auth = (username, password)
+        self.__workflows_cache = None
+        self.__run_template_cache = {}
     
     def get_workflows(self):
         """Returns a list of workflows available on Taverna Player sorted by their identifier 
@@ -70,6 +73,12 @@ class Client(object):
         Exception('Unable to retrieve workflow descriptions')
         """
         
+        if self.__workflows_cache is None:
+            current_keys = []
+            self.__workflows_cache = {}
+        else:
+            current_keys = list(self.__workflows_cache.keys())
+        
         location = Client.WORKFLOWS_LOCATION % self.__url
         workflow_descriptions_response = requests.get(location, headers=Client.HEADERS, auth=self.__auth)
         if workflow_descriptions_response.status_code >= 400:
@@ -77,8 +86,18 @@ class Client(object):
         workflow_descriptions = workflow_descriptions_response.json()
         result = []
         for wd in workflow_descriptions:
-            result.append(Workflow(self, wd['id'], wd['category'], wd['description'], wd['title']))
-        return sorted(result, key=lambda w: w.identifier)
+            if wd['id'] in current_keys:
+                current_keys.remove(wd['id'])
+            else:
+                new_workflow = Workflow(self, wd['id'], wd['category'], wd['description'], wd['title'])
+                self.__workflows_cache[wd['id']] = new_workflow
+        
+        # current_keys will now contain keys that have been removed from the player
+        for k in current_keys:
+            del self.__workflows_cache[k]
+        
+        
+        return sorted(self.__workflows_cache.values(), key=lambda k: k.identifier)
     
     workflows = property(get_workflows)
         
@@ -104,24 +123,30 @@ class Client(object):
         
         if not isinstance(workflowId, int):
             raise Exception('workflowId must be an integer')
-        location = Client.RUN_TEMPLATE_LOCATION % (self.__url, workflowId)
-        workflow_description_response = requests.get(location, headers=Client.HEADERS, auth=self.__auth)
-        if workflow_description_response.status_code >= 400:
-            raise Exception('Unable to retrieve workflow description for ' + str(workflowId) + ' : ' + str(workflow_description_response.status_code))
         
-        try:
-            workflow_description = workflow_description_response.json()
-        except:
-            print str(workflowId)
-            print str(workflow_description_response.status_code)
-            raise Exception('Unable to read json of workflow description')
+        if workflowId not in self.__run_template_cache:
         
-        try:
-            run = workflow_description['run']
-        except KeyError:
-            raise Exception('Unable to extract information from workflow description')
+            location = Client.RUN_TEMPLATE_LOCATION % (self.__url, workflowId)
+            workflow_description_response = requests.get(location, headers=Client.HEADERS, auth=self.__auth)
+            if workflow_description_response.status_code >= 400:
+                raise Exception('Unable to retrieve workflow description for ' + str(workflowId) + ' : ' + str(workflow_description_response.status_code))
+            
+            try:
+                workflow_description = workflow_description_response.json()
+            except:
+                print str(workflowId)
+                print str(workflow_description_response.status_code)
+                raise Exception('Unable to read json of workflow description')
+            
+            try:
+                run = workflow_description['run']
+            except KeyError:
+                raise Exception('Unable to extract information from workflow description')
+            
+            result = RunTemplate(run)
+            self.__run_template_cache[workflowId] = result
         
-        return RunTemplate(run)
+        return self.__run_template_cache[workflowId]
     
     def get_workflow(self, workflowId):
         """Return the Workflow with the specified identifier
@@ -135,7 +160,8 @@ class Client(object):
         Returns the matching Workflow object
         
         """
-        return filter(lambda x: x.identifier == workflowId, self.workflows)[0]
+        self.get_workflows()
+        return self.__workflows_cache[workflowId]
     
     
     def run_workflow(self, workflowId, runName, inputDict):
@@ -165,7 +191,7 @@ class Client(object):
             inputDict = {}
         new_run = self.start_workflow_run(workflowId, runName, inputDict)
         self.show_workflow_run(new_run)
-        self.get_results_of_run(new_run)
+        new_run.get_outputs()
         return new_run
     
     def start_workflow_run(self, workflowId, runName, inputDict):
@@ -230,7 +256,7 @@ class Client(object):
             raise Exception('Unable to locate new run')
         try:
             run_info = new_run_result.json()
-            new_run = Run(run_info['id'], inputDict)
+            new_run = Run(self, run_info['id'], inputDict)
             return new_run
             
         except KeyError:
@@ -289,7 +315,7 @@ class Client(object):
             if zip_response.status_code >= 400:
                 raise Exception('Error reading outputs')
             output_dict = convert_zip(zip_response.content)
-            run.outputs = output_dict
+            run._set_outputs(output_dict)
             log_location = self.__url + finished_info['log']
             log_response = requests.get(log_location, headers = {'accept':'application/octet-stream'}, auth=self.__auth)
             if log_response.status_code >= 400:
@@ -392,7 +418,7 @@ class Run(object):
     The information required to run a Workflow
     
     """    
-    def __init__(self, id, inputs):
+    def __init__(self, client, id, inputs):
         """
         Parameters
         ----------
@@ -405,6 +431,19 @@ class Run(object):
         """
         self.identifier = id
         self.inputs = inputs
+        self.__outputs = None
+        self.__client = client
+    
+    def get_outputs(self):
+        if self.__outputs is None:
+            self.__client.get_results_of_run(self)
+        return self.__outputs
+    
+    def _set_outputs(self, results):
+        self.__outputs = results
+    
+    
+    outputs = property(get_outputs)
 
 def check_url(url):
     """
